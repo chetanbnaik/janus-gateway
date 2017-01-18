@@ -631,14 +631,14 @@ int janus_process_incoming_response (janus_request *request) {
 	
 	json_t * root = request->message;
 	json_t * local_message  = json_object();
-	json_t * jsep = NULL;
+	json_t * jsep = NULL, * result = NULL;
 	
 	/* Ok, let's start with the ids */
 	guint64 session_id = 0, handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
-	json_t *h = json_object_get(root, "handle_id");
+	json_t *h = json_object_get(root, "sender");
 	if(h && json_is_integer(h))
 		handle_id = json_integer_value(h);
 	
@@ -676,13 +676,16 @@ int janus_process_incoming_response (janus_request *request) {
 			if (plugindata && json_is_object(plugindata)) {
 				json_t * eventdata = json_object_get (plugindata, "data");
 				if (eventdata && json_is_object(eventdata)) {
-					json_t * result = json_object_get (eventdata, "result");
+					result = json_object_get (eventdata, "result");
 					if (result) {
 						json_object_set_new (local_message, "janus", json_string("message"));
 						json_object_set_new (local_message, "session_id", json_integer(session_id));
 						json_object_set_new (local_message, "handle_id", json_integer(handle_id));
 						json_object_set_new (local_message, "body", result);
-						if (jsep && json_is_object(jsep)) json_object_set_new (local_message, "jsep", jsep);
+						if (jsep && json_is_object(jsep)) {
+							json_object_set_new (jsep,"trickle",json_false());
+							json_object_set_new (local_message, "jsep", jsep);
+						}
 						
 						janus_random_string(12, (char *)&tr);
 						json_object_set_new (local_message, "transaction", json_string(tr));
@@ -2852,21 +2855,24 @@ int janus_plugin_send_request (janus_plugin_session * plugin_session, janus_plug
 	json_object_set_new(request, "janus", json_string(janus_text));
 	json_object_set_new(request, "session_id", json_integer(session->session_id));
 	json_object_set_new(request, "handle_id", json_integer(ice_handle->handle_id));
+	json_object_set_new(request, "sender", json_integer(ice_handle->handle_id));
 	if(transaction != NULL)
 		json_object_set_new(request, "transaction", json_string(transaction));
 	if (message != NULL) {
-		if (!strcasecmp(janus_text,"trickle")) {
+		/*if (!strcasecmp(janus_text,"trickle")) {
 			json_object_set_new (request, "candidate", message);
 		} else {
 			json_object_set_new (request, "body", message);
-		}
+		}*/
+		json_object_set_new (request, "body", message);
 	}
 	
 	if(merged_jsep != NULL) {
-		json_object_set_new(jsep,"trickle",json_false());
+		json_object_set_new(merged_jsep,"trickle",json_false());
 		json_object_set_new(request, "jsep", merged_jsep);
 	}
 	json_t * local_request = json_deep_copy (request);
+	
 	/* Send the request */
 	JANUS_LOG(LOG_VERB, "[%"SCNu64"] Sending request to transport...\n", ice_handle->handle_id);
 	janus_session_send_request(session->session_id, request);
@@ -2878,6 +2884,11 @@ int janus_plugin_send_request (janus_plugin_session * plugin_session, janus_plug
 	}
 	if (!strcasecmp(janus_text,"trickle") || !strcasecmp(janus_text,"hangup") || !strcasecmp(janus_text,"destroy") || !strcasecmp(janus_text,"detach")) {
 		JANUS_LOG (LOG_VERB, "Sending a local request: %s..\n",janus_text);
+		if (transaction == NULL) {
+			char tr[12];
+			janus_random_string(12, (char *)&tr);
+			json_object_set_new(local_request,"transaction",json_string(tr));
+		}
 		janus_request * req = janus_request_new (session->source->transport, session->source->instance, NULL, FALSE, local_request);
 		int ret = janus_process_incoming_response (req);
 		janus_request_destroy(req);
