@@ -33,6 +33,20 @@ gint64 janus_get_monotonic_time(void) {
 	return (ts.tv_sec*G_GINT64_CONSTANT(1000000)) + (ts.tv_nsec/G_GINT64_CONSTANT(1000));
 }
 
+/* Random string helper (for transactions) */
+static char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+void janus_random_string(int length, char *buffer) {
+	if(length > 0 && buffer) {
+		int l = (int)(sizeof(charset)-1);
+		int i=0;
+		for(i=0; i<length; i++) {
+			int key = rand() % l;
+			buffer[i] = charset[key];
+		}
+		buffer[length-1] = '\0';
+	}
+}
+
 gint64 janus_get_real_time(void) {
 	struct timespec ts;
 	clock_gettime (CLOCK_REALTIME, &ts);

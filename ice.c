@@ -924,16 +924,17 @@ void janus_ice_stats_reset(janus_ice_stats *stats) {
 
 
 /* ICE Handles */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session) {
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, guint64 handle_id) {
 	if(gateway_session == NULL)
 		return NULL;
 	janus_session *session = (janus_session *)gateway_session;
-	guint64 handle_id = 0;
-	while(handle_id == 0) {
-		handle_id = janus_random_uint64();
-		if(janus_ice_handle_find(gateway_session, handle_id) != NULL) {
-			/* Handle ID already taken, try another one */
-			handle_id = 0;
+	if (handle_id == 0) {
+		while(handle_id == 0) {
+			handle_id = janus_random_uint64();
+			if(janus_ice_handle_find(gateway_session, handle_id) != NULL) {
+				/* Handle ID already taken, try another one */
+				handle_id = 0;
+			}
 		}
 	}
 	JANUS_LOG(LOG_INFO, "Creating new handle in session %"SCNu64": %"SCNu64"\n", session->session_id, handle_id);

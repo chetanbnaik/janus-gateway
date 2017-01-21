@@ -34,6 +34,8 @@ struct janus_json_parameter {
  * @returns The system monotonic time */
 gint64 janus_get_monotonic_time(void);
 
+void janus_random_string(int length, char *buffer);
+
 /*! \brief Helper to retrieve the system real time, as Glib's
  * g_get_real_time may not be available (only since 2.28)
  * @returns The system real time */

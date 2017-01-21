@@ -209,6 +209,7 @@ struct janus_transport_callbacks {
 	 * @param[in] handle The transport session that went away
 	 * @param[in] transport Opaque pointer to the transport session instance that went away */
 	void (* const transport_gone)(janus_transport *plugin, void *transport);
+	void (* const transport_connected)(janus_transport *plugin, void *transport);
 	/*! \brief Callback to check with the core if an API secret must be provided
 	 * @param[in] apisecret The API secret to validate
 	 * @returns TRUE if an API secret is needed, FALSE otherwise */

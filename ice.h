@@ -462,7 +462,7 @@ void janus_ice_trickle_destroy(janus_ice_trickle *trickle);
 /*! \brief Method to create a new Janus ICE handle
  * @param[in] gateway_session The gateway/peer session this ICE handle will belong to
  * @returns The created Janus ICE handle if successful, NULL otherwise */
-janus_ice_handle *janus_ice_handle_create(void *gateway_session);
+janus_ice_handle *janus_ice_handle_create(void *gateway_session, guint64 handle_id);
 /*! \brief Method to find an existing Janus ICE handle from its ID
  * @param[in] gateway_session The gateway/peer session this ICE handle belongs to
  * @param[in] handle_id The Janus ICE handle ID

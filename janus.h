@@ -50,8 +50,12 @@ typedef struct janus_session {
 	GHashTable *ice_handles;
 	/*! \brief Time of the last activity on the session */
 	gint64 last_activity;
+	/*! \brief Time of the last keepalive sent by the session */
+	gint64 last_keepalive;
 	/*! \brief Pointer to the request instance (and the transport that originated the session) */
 	janus_request *source;
+	/*! \brief Requested handle_id to use to attach client plugin */
+	guint64 request_handle_id;
 	/*! \brief Flag to trigger a lazy session destruction */
 	gint destroy:1;
 	/*! \brief Flag to notify there's been a session timeout */
@@ -76,6 +80,8 @@ janus_session *janus_session_find(guint64 session_id);
  * @param[in] session_id The Janus Gateway-Client session ID
  * @param[in] event The event to notify as a Jansson JSON object */
 void janus_session_notify_event(guint64 session_id, json_t *event);
+
+void janus_session_send_request(guint64 session_id, json_t *request);
 /*! \brief Method to find an existing Janus Gateway-Client session scheduled to be destroyed from its ID
  * @param[in] session_id The Janus Gateway-Client session ID
  * @returns The created Janus Gateway-Client session if successful, NULL otherwise */
@@ -108,7 +114,8 @@ struct janus_request {
 	/*! \brief Whether this is a Janus API or admin API request */
 	gboolean admin;
 	/*! \brief Pointer to the original request, if available */
-	json_t *message;
+	json_t * message;
+	json_t * local_message;
 };
 /*! \brief Helper to allocate a janus_request instance
  * @param[in] transport Pointer to the transport
@@ -122,6 +129,8 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
  * @param[in] request The janus_request instance to destroy
  * @note The opaque pointers in the instance are not destroyed, that's up to you */
 void janus_request_destroy(janus_request *request);
+
+int janus_process_incoming_response(janus_request *request);
 /*! \brief Helper to process an incoming request, no matter where it comes from
  * @param[in] request The JSON request
  * @returns 0 on success, a negative integer otherwise

@@ -172,14 +172,14 @@ CLEANFILES += conf/janus.transport.http.cfg.sample
 endif
 
 if ENABLE_WEBSOCKETS
-transport_LTLIBRARIES += transports/libjanus_websockets.la
-transports_libjanus_websockets_la_SOURCES = transports/janus_websockets.c
-transports_libjanus_websockets_la_CFLAGS = $(transports_cflags)
-transports_libjanus_websockets_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
-transports_libjanus_websockets_la_LIBADD = $(transports_libadd)
-conf_DATA += conf/janus.transport.websockets.cfg.sample
-EXTRA_DIST += conf/janus.transport.websockets.cfg.sample.in
-CLEANFILES += conf/janus.transport.websockets.cfg.sample
+transport_LTLIBRARIES += transports/libjanus_wsclient.la
+transports_libjanus_wsclient_la_SOURCES = transports/janus_websocket_client.c
+transports_libjanus_wsclient_la_CFLAGS = $(transports_cflags)
+transports_libjanus_wsclient_la_LDFLAGS = $(transports_ldflags) $(WS_MANUAL_LIBS)
+transports_libjanus_wsclient_la_LIBADD = $(transports_libadd)
+conf_DATA += conf/janus.transport.wsclient.cfg.sample
+EXTRA_DIST += conf/janus.transport.wsclient.cfg.sample.in
+CLEANFILES += conf/janus.transport.wsclient.cfg.sample
 endif
 
 if ENABLE_RABBITMQ

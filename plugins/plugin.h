@@ -338,6 +338,8 @@ struct janus_callbacks {
 	 * @param[in] message The json_t object containing the JSON message
 	 * @param[in] jsep The json_t object containing the JSEP type and the SDP attached to the message/event, if any (offer/answer) */
 	int (* const push_event)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
+	
+	int (* const send_request)(janus_plugin_session *handle, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep, const char * janus_text);
 
 	/*! \brief Callback to relay RTP packets to a peer
 	 * @param[in] handle The plugin/gateway session used for this peer

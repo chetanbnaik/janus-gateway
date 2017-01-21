@@ -74,13 +74,18 @@ static char *api_secret = NULL, *admin_api_secret = NULL;
 /* JSON parameters */
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string);
 
+static struct janus_json_parameter incoming_response_parameters[] = {
+	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+};
+
 static struct janus_json_parameter incoming_request_parameters[] = {
 	{"transaction", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"janus", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
 	{"id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter attach_parameters[] = {
-	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
+	{"plugin", JSON_STRING, JANUS_JSON_PARAM_REQUIRED},
+	{"request_handle_id", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE}
 };
 static struct janus_json_parameter body_parameters[] = {
 	{"body", JSON_OBJECT, JANUS_JSON_PARAM_REQUIRED}
@@ -314,6 +319,7 @@ static void janus_termination_handler(void) {
 ///@{
 void janus_transport_incoming_request(janus_transport *plugin, void *transport, void *request_id, gboolean admin, json_t *message, json_error_t *error);
 void janus_transport_gone(janus_transport *plugin, void *transport);
+void janus_transport_connected(janus_transport *plugin, void *transport);
 gboolean janus_transport_is_api_secret_needed(janus_transport *plugin);
 gboolean janus_transport_is_api_secret_valid(janus_transport *plugin, const char *apisecret);
 gboolean janus_transport_is_auth_token_needed(janus_transport *plugin);
@@ -323,6 +329,7 @@ static janus_transport_callbacks janus_handler_transport =
 	{
 		.incoming_request = janus_transport_incoming_request,
 		.transport_gone = janus_transport_gone,
+		.transport_connected = janus_transport_connected,
 		.is_api_secret_needed = janus_transport_is_api_secret_needed,
 		.is_api_secret_valid = janus_transport_is_api_secret_valid,
 		.is_auth_token_needed = janus_transport_is_auth_token_needed,
@@ -340,6 +347,7 @@ void janus_transport_task(gpointer data, gpointer user_data);
  */
 ///@{
 int janus_plugin_push_event(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep);
+int janus_plugin_send_request(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *transaction, json_t *message, json_t *jsep, const char * janus_text);
 json_t *janus_plugin_handle_sdp(janus_plugin_session *plugin_session, janus_plugin *plugin, const char *sdp_type, const char *sdp);
 void janus_plugin_relay_rtp(janus_plugin_session *plugin_session, int video, char *buf, int len);
 void janus_plugin_relay_rtcp(janus_plugin_session *plugin_session, int video, char *buf, int len);
@@ -350,6 +358,7 @@ void janus_plugin_notify_event(janus_plugin *plugin, janus_plugin_session *plugi
 static janus_callbacks janus_handler_plugin =
 	{
 		.push_event = janus_plugin_push_event,
+		.send_request = janus_plugin_send_request,
 		.relay_rtp = janus_plugin_relay_rtp,
 		.relay_rtcp = janus_plugin_relay_rtcp,
 		.relay_data = janus_plugin_relay_data,
@@ -368,6 +377,7 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
+#define SESSION_KEEPALIVE 	45
 
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
@@ -379,6 +389,7 @@ static gboolean janus_cleanup_session(gpointer user_data) {
 }
 
 static gboolean janus_check_sessions(gpointer user_data) {
+	char tr[12];
 	GMainContext *watchdog_context = (GMainContext *) user_data;
 	janus_mutex_lock(&sessions_mutex);
 	if(sessions && g_hash_table_size(sessions) > 0) {
@@ -419,6 +430,18 @@ static gboolean janus_check_sessions(gpointer user_data) {
 				g_source_set_callback(timeout_source, janus_cleanup_session, session, NULL);
 				g_source_attach(timeout_source, watchdog_context);
 				g_source_unref(timeout_source);
+			}
+			if ((now - session->last_keepalive) >= SESSION_KEEPALIVE * G_USEC_PER_SEC && !session->timeout) {
+				PS_LOG (LOG_VERB, "Sending keepalive for session %"SCNu64"...\n", session->session_id);
+				if (session->source) {
+					json_t * event = json_object ();
+					json_object_set_new (event, "janus", json_string("keepalive"));
+					json_object_set_new (event, "session_id", json_integer(session->session_id));
+					janus_random_string(12, (char *)&tr);
+					json_object_set_new (event, "transaction", json_string(tr));
+					session->source->transport->send_message (session->source->instance, event);
+					session->last_keepalive = now;
+				}
 			}
 		}
 	}
@@ -465,6 +488,8 @@ janus_session *janus_session_create(guint64 session_id) {
 	session->destroy = 0;
 	session->timeout = 0;
 	session->last_activity = janus_get_monotonic_time();
+	session->last_keepalive = janus_get_monotonic_time();
+	session->request_handle_id = 0;
 	janus_mutex_init(&session->mutex);
 	janus_mutex_lock(&sessions_mutex);
 	g_hash_table_insert(sessions, janus_uint64_dup(session->session_id), session);
@@ -501,6 +526,21 @@ void janus_session_notify_event(guint64 session_id, json_t *event) {
 		janus_mutex_unlock(&sessions_mutex);
 		/* No transport, free the event */
 		json_decref(event);
+	}
+}
+
+void janus_session_send_request(guint64 session_id, json_t *request) {
+	janus_mutex_lock(&sessions_mutex);
+	janus_session *session = sessions ? g_hash_table_lookup(sessions, &session_id) : NULL;
+	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
+		janus_mutex_unlock(&sessions_mutex);
+		/* Send this to the transport client */
+		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
+		session->source->transport->send_message(session->source->instance, NULL, FALSE, request);
+	} else {
+		janus_mutex_unlock(&sessions_mutex);
+		/* No transport, free the event */
+		json_decref(request);
 	}
 }
 
@@ -561,6 +601,7 @@ janus_request *janus_request_new(janus_transport *transport, void *instance, voi
 	request->request_id = request_id;
 	request->admin = admin;
 	request->message = message;
+	request->local_message = NULL;
 	return request;
 }
 
@@ -572,8 +613,217 @@ void janus_request_destroy(janus_request *request) {
 	request->request_id = NULL;
 	if(request->message)
 		json_decref(request->message);
+	if (request->local_message) 
+		json_decref (request->local_message);
 	request->message = NULL;
 	g_free(request);
+}
+
+int janus_process_incoming_response (janus_request *request) {
+	int ret = -1;
+	if (request == NULL) {
+		PS_LOG (LOG_ERR, "missing request or payload to process, giving up...\n");
+		return ret;
+	}
+	int error_code = 0;
+	char error_cause[100];
+	char tr[12];
+	
+	json_t * root = request->message;
+	json_t * local_message  = json_object();
+	json_t * jsep = NULL;
+	
+	/* Ok, let's start with the ids */
+	guint64 session_id = 0, handle_id = 0;
+	json_t *s = json_object_get(root, "session_id");
+	if(s && json_is_integer(s))
+		session_id = json_integer_value(s);
+	json_t *h = json_object_get(root, "handle_id");
+	if(h && json_is_integer(h))
+		handle_id = json_integer_value(h);
+	
+	/* Get transaction and message request */
+	JANUS_VALIDATE_JSON_OBJECT(root, incoming_response_parameters,
+		error_code, error_cause, FALSE,
+		JANUS_ERROR_MISSING_MANDATORY_ELEMENT, JANUS_ERROR_INVALID_ELEMENT_TYPE);
+	if(error_code != 0) {
+		ret = janus_process_error_string(request, session_id, NULL, error_code, error_cause);
+		goto jsondone;
+	}
+	
+	json_t *message = json_object_get(root, "janus");
+	const gchar *message_text = json_string_value(message);
+	
+	jsep = json_object_get(root, "jsep");
+	
+	if (!strcasecmp(message_text,"event") && session_id > 0) {
+		janus_session * session = janus_session_find (session_id);
+		if (!session) {
+			JANUS_LOG (LOG_ERR, "Couldn't find session %"SCNu64"...\n", session_id);
+			goto jsondone;
+		}
+		session->last_activity = janus_get_monotonic_time();
+		
+		if (session->request_handle_id > 0) {
+			handle_id = session->request_handle_id;
+			janus_ice_handle * handle = NULL;		
+			handle = janus_ice_handle_find (session, handle_id);
+			if (!handle) {
+				JANUS_LOG (LOG_ERR, "Couldnt find any handle %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
+				goto jsondone;
+			}
+			json_t * plugindata = json_object_get (root, "plugindata");
+			if (plugindata && json_is_object(plugindata)) {
+				json_t * eventdata = json_object_get (plugindata, "data");
+				if (eventdata && json_is_object(eventdata)) {
+					json_t * result = json_object_get (eventdata, "result");
+					if (result) {
+						json_object_set_new (local_message, "janus", json_string("message"));
+						json_object_set_new (local_message, "session_id", json_integer(session_id));
+						json_object_set_new (local_message, "handle_id", json_integer(handle_id));
+						json_object_set_new (local_message, "body", result);
+						if (jsep && json_is_object(jsep)) json_object_set_new (local_message, "jsep", jsep);
+						
+						janus_random_string(12, (char *)&tr);
+						json_object_set_new (local_message, "transaction", json_string(tr));
+					
+						request->local_message = local_message;
+						ret = janus_process_incoming_request (request);
+						goto jsondone;
+					} else {
+						JANUS_LOG (LOG_ERR, "No results attached to eventdata\n");
+						goto jsondone;
+					}
+				} else {
+					JANUS_LOG (LOG_ERR, "No evendata attached to plugin\n");
+					goto jsondone;
+				}
+			} else {
+				JANUS_LOG (LOG_ERR, "No event plugindata attached...\n");
+				goto jsondone;
+			}
+			
+		} else {
+			JANUS_LOG (LOG_ERR, "Session %"SCNu64" doesn't have any handle attached to it...\n", session_id);
+		}
+	
+		goto jsondone;
+	}
+		
+	
+	if (!strcasecmp(message_text,"success")) {
+		if (session_id > 0 && handle_id == 0) {
+			json_t * data = json_object_get (root, "data");
+			if (data && json_is_object(data)) {
+				json_t * h = json_object_get (data, "id");
+				if (h && json_is_integer(h)) {
+					handle_id = json_integer_value(h);
+				} else {
+					JANUS_LOG (LOG_VERB, "Error, no handle id received\n");
+					goto jsondone;
+				}
+				JANUS_LOG (LOG_VERB, "Creating handle id: %"SCNu64"..\n",handle_id);
+				
+				json_object_set_new(local_message, "janus", json_string("attach"));
+				json_object_set_new(local_message, "session_id", json_integer(session_id));
+				janus_random_string(12, (char *)&tr);
+				json_object_set_new(local_message, "transaction", json_string(tr));
+				json_object_set_new(local_message, "local_request", json_true());
+				json_object_set_new(local_message, "plugin", json_string("janus.plugin.psclient"));
+				json_object_set_new(local_message, "request_handle_id", json_integer(handle_id));
+				
+				request->local_message = local_message;
+				ret = janus_process_incoming_request (request);
+				if (ret == 0) {
+					json_t * payload = json_object();
+					json_object_set_new (payload, "janus", json_string("message"));
+					json_object_set_new (payload, "session_id", json_integer(session_id));
+					json_object_set_new (payload, "handle_id", json_integer(handle_id));
+					janus_random_string(12, (char *)&tr);
+					json_object_set_new (payload, "transaction", json_string(tr));
+					json_t * reply = json_object();
+					json_object_set_new (reply, "request", json_string("register"));
+					json_object_set_new (reply, "username", json_string("democap"));
+					json_object_set_new (payload, "body", reply);
+					ret = request->transport->send_message(request->instance, payload);
+				}
+				goto jsondone;
+			} else {
+				JANUS_LOG (LOG_VERB, "Success message for an existing session and handle.\n");
+				goto jsondone;
+			}
+		}
+		if (session_id == 0 && handle_id == 0) {
+			json_t * data = json_object_get(root, "data");
+			if (data && json_is_object(data)){
+				json_t * s = json_object_get(data, "id");
+				if (s && json_is_integer(s)) {
+					session_id = json_integer_value(s);
+				} else { 
+					JANUS_LOG (LOG_VERB, "Error, no session id received\n");
+					goto jsondone;
+				}
+				JANUS_LOG (LOG_VERB, "Creating session id: %"SCNu64"..\n",session_id);
+				
+				json_object_set_new(local_message, "janus", json_string("create"));
+				json_object_set_new(local_message, "session_id", json_integer(session_id));
+				janus_random_string(12, (char *)&tr);
+				json_object_set_new(local_message, "transaction", json_string(tr));
+				json_object_set_new(local_message, "local_request", json_true());
+				request->local_message = local_message;
+				ret = janus_process_incoming_request (request);
+				if (ret == 0) {
+					json_t * payload = json_object();
+					json_object_set_new (payload, "janus", json_string("attach"));
+					json_object_set_new (payload, "session_id", json_integer(session_id));
+					janus_random_string(12, (char *)&tr);
+					json_object_set_new(payload, "transaction", json_string(tr));
+					json_object_set_new(payload, "plugin", json_string("janus.plugin.videocall"));
+					ret = request->transport->send_message(request->instance, payload);
+				}
+				goto jsondone;
+			} else {
+				PS_LOG (LOG_VERB, "Error, no session id received\n");
+				goto jsondone;
+			}
+		}
+	}
+	
+	if (session_id > 0 && !strcasecmp(message_text,"ack")) {
+		ps_session * session = ps_session_find (session_id);
+		if (!session) {
+			PS_LOG (LOG_ERR, "Couldn't find session %"SCNu64"...\n", session_id);
+			ret = ps_process_error (request, session_id, NULL, JANUS_ERROR_SESSION_NOT_FOUND, "No such session %"SCNu64"", session_id);
+			goto jsondone;
+		}
+		session->last_activity = ps_get_monotonic_time();
+		ret = 0;
+		goto jsondone;
+	}
+	
+	//if (session_id > 0 && !strcasecmp(message_text,"error")) {
+	if (!strcasecmp(message_text,"error")) {
+		json_t * error = json_object_get (root, "error");
+		if (error && json_is_object(error)) {
+			json_t * errorreason = json_object_get (error, "reason");
+			if (errorreason && json_is_string (errorreason)) {
+				PS_LOG (LOG_VERB, "Error message received: %s ..\n",json_string_value(errorreason));
+				ret = 0;
+				goto jsondone;
+			}
+		}
+		goto jsondone;
+	}
+
+
+	if (session_id > 0 && handle_id > 0) {
+		request->local_message = root;
+		ret = ps_process_incoming_request (request);
+		goto jsondone;
+	}
+	
+jsondone:
+	return ret;
 }
 
 int janus_process_incoming_request(janus_request *request) {
@@ -584,9 +834,17 @@ int janus_process_incoming_request(janus_request *request) {
 	}
 	int error_code = 0;
 	char error_cause[100];
-	json_t *root = request->message;
+	json_t *root = NULL;
+	
+	if (request->local_message) {
+		PS_LOG (LOG_VERB, "Handling response from Janus gateway, using local_message\n");
+		root = request->local_message;
+	} else {
+		root = request->message;
+	}
+	
 	/* Ok, let's start with the ids */
-	guint64 session_id = 0, handle_id = 0;
+	guint64 session_id = 0, handle_id = 0, request_handle_id = 0;
 	json_t *s = json_object_get(root, "session_id");
 	if(s && json_is_integer(s))
 		session_id = json_integer_value(s);
@@ -684,6 +942,16 @@ int janus_process_incoming_request(janus_request *request) {
 		/* Send the success reply */
 		ret = janus_process_success(request, reply);
 		goto jsondone;
+	} else if (session_id > 0 && handle_id == 0) {
+		if (!strcasecmp(message_text,"create")) {
+			janus_session * session = janus_session_create (session_id);
+			/* Take note of the request source that originated this session (HTTP, WebSockets, RabbitMQ?) */
+			session->source = janus_request_new(request->transport, request->instance, NULL, FALSE, NULL);
+			/* Notify the source that a new session has been created */
+			request->transport->session_created(request->instance, session->session_id);
+			ret = 0;
+			goto jsondone;
+		}
 	}
 	if(session_id < 1) {
 		JANUS_LOG(LOG_ERR, "Invalid session\n");
@@ -786,12 +1054,15 @@ int janus_process_incoming_request(janus_request *request) {
 			}
 		}
 		/* Create handle */
-		handle = janus_ice_handle_create(session);
+		json_t * rhid = json_object_get (root, "request_handle_id");
+		request_handle_id = json_integer_value (rhid);
+		handle = janus_ice_handle_create(session, request_handle_id);
 		if(handle == NULL) {
 			ret = janus_process_error(request, session_id, transaction_text, JANUS_ERROR_UNKNOWN, "Memory error");
 			goto jsondone;
 		}
 		handle_id = handle->handle_id;
+		session->request_handle_id = handle_id;
 		/* Attach to the plugin */
 		int error = 0;
 		if((error = janus_ice_handle_attach_plugin(session, handle_id, plugin_t)) != 0) {
@@ -2181,9 +2452,14 @@ int janus_process_success(janus_request *request, json_t *payload)
 {
 	if(!request || !payload)
 		return -1;
-	/* Pass to the right transport plugin */
-	JANUS_LOG(LOG_HUGE, "Sending %s API response to %s (%p)\n", request->admin ? "admin" : "Janus", request->transport->get_package(), request->instance);
-	return request->transport->send_message(request->instance, request->request_id, request->admin, payload);
+	
+	if (request->admin) {
+		/* Pass to the right transport plugin */
+		JANUS_LOG(LOG_HUGE, "Sending %s API response to %s (%p)\n", request->admin ? "admin" : "Janus", request->transport->get_package(), request->instance);
+		return request->transport->send_message(request->instance, request->request_id, request->admin, payload);
+	} else {
+		return 0;
+	}
 }
 
 static int janus_process_error_string(janus_request *request, uint64_t session_id, const char *transaction, gint error, gchar *error_string)
@@ -2192,19 +2468,23 @@ static int janus_process_error_string(janus_request *request, uint64_t session_i
 		return -1;
 	/* Done preparing error */
 	JANUS_LOG(LOG_VERB, "[%s] Returning %s API error %d (%s)\n", transaction, request->admin ? "admin" : "Janus", error, error_string);
-	/* Prepare JSON error */
-	json_t *reply = json_object();
-	json_object_set_new(reply, "janus", json_string("error"));
-	if(session_id > 0)
-		json_object_set_new(reply, "session_id", json_integer(session_id));
-	if(transaction != NULL)
-		json_object_set_new(reply, "transaction", json_string(transaction));
-	json_t *error_data = json_object();
-	json_object_set_new(error_data, "code", json_integer(error));
-	json_object_set_new(error_data, "reason", json_string(error_string));
-	json_object_set_new(reply, "error", error_data);
-	/* Pass to the right transport plugin */
-	return request->transport->send_message(request->instance, request->request_id, request->admin, reply);
+	if (request->admin) {
+		/* Prepare JSON error */
+		json_t *reply = json_object();
+		json_object_set_new(reply, "janus", json_string("error"));
+		if(session_id > 0)
+			json_object_set_new(reply, "session_id", json_integer(session_id));
+		if(transaction != NULL)
+			json_object_set_new(reply, "transaction", json_string(transaction));
+		json_t *error_data = json_object();
+		json_object_set_new(error_data, "code", json_integer(error));
+		json_object_set_new(error_data, "reason", json_string(error_string));
+		json_object_set_new(reply, "error", error_data);
+		
+		return request->transport->send_message(request->instance, request->request_id, request->admin, reply);
+	} else {
+		return 0;
+	}
 }
 
 int janus_process_error(janus_request *request, uint64_t session_id, const char *transaction, gint error, const char *format, ...)
