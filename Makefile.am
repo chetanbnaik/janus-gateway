@@ -25,7 +25,7 @@ DISTCHECK_CONFIGURE_FLAGS = --disable-docs --enable-post-processing
 EXTRA_DIST = $(NULL)
 CLEANFILES = $(NULL)
 
-bin_PROGRAMS = janus
+bin_PROGRAMS = janusclient
 
 headerdir = $(includedir)/janus
 header_HEADERS = \
@@ -76,7 +76,7 @@ CLEANFILES += conf/janus.cfg.sample
 # Janus
 ##
 
-janus_SOURCES = \
+janusclient_SOURCES = \
 	apierror.c \
 	apierror.h \
 	auth.c \
@@ -94,7 +94,7 @@ janus_SOURCES = \
 	events.h \
 	ice.c \
 	ice.h \
-	janus.c \
+	janusclient.c \
 	janus.h \
 	log.c \
 	log.h \
@@ -121,7 +121,7 @@ janus_SOURCES = \
 	events/eventhandler.h \
 	$(NULL)
 
-janus_CFLAGS = \
+janusclient_CFLAGS = \
 	$(AM_CFLAGS) \
 	$(JANUS_CFLAGS) \
 	-DPLUGINDIR=\"$(plugindir)\" \
@@ -131,7 +131,7 @@ janus_CFLAGS = \
 	$(BORINGSSL_CFLAGS) \
 	$(NULL)
 
-janus_LDADD = \
+janusclient_LDADD = \
 	$(BORINGSSL_LIBS) \
 	$(JANUS_LIBS) \
 	$(JANUS_MANUAL_LIBS) \
@@ -142,7 +142,7 @@ man1_MANS = janus.1
 BUILT_SOURCES = cmdline.c cmdline.h
 
 cmdline.c: janus.ggo
-	gengetopt --set-package="janus" --set-version="$(VERSION)" < $^
+	gengetopt --set-package="janusclient" --set-version="$(VERSION)" < $^
 
 EXTRA_DIST += janus.ggo
 CLEANFILES += cmdline.c cmdline.h
@@ -321,6 +321,16 @@ plugins_libjanus_videocall_la_LDFLAGS = $(plugins_ldflags)
 plugins_libjanus_videocall_la_LIBADD = $(plugins_libadd)
 conf_DATA += conf/janus.plugin.videocall.cfg.sample
 EXTRA_DIST += conf/janus.plugin.videocall.cfg.sample
+endif
+
+if ENABLE_PLUGIN_NATIVECLIENT
+plugin_LTLIBRARIES += plugins/libjanus_nativeclient.la
+plugins_libjanus_nativeclient_la_SOURCES = plugins/janus_nativeclient_plugin.c
+plugins_libjanus_nativeclient_la_CFLAGS = $(plugins_cflags) $(GST_CFLAGS)
+plugins_libjanus_nativeclient_la_LDFLAGS = $(plugins_ldflags) $(GST_LDFLAGS) $(GST_LIBS)
+plugins_libjanus_nativeclient_la_LIBADD = $(plugins_libadd) $(GST_LIBADD)
+conf_DATA += conf/janus.plugin.nativeclient.cfg.sample
+EXTRA_DIST += conf/janus.plugin.nativeclient.cfg.sample
 endif
 
 if ENABLE_PLUGIN_VIDEOROOM
