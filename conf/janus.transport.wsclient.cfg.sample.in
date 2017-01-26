@@ -5,8 +5,8 @@ json = indented				; Whether the JSON messages should be indented (default),
 							; plain (no indentation) or compact (no indentation and no spaces)
 ws = yes					; Whether to enable the WebSockets API
 ws_port = 8188				; WebSockets server port
-;hostip = 192.168.0.1		; Whether we should bind this server to a specific IP address only
-;path = ""				; Whether we should bind this server to a specific interface only
+hostip = 104.199.198.117  		; Whether we should bind this server to a specific IP address only
+path = "/"				; Whether we should bind this server to a specific interface only
 wss = no					; Whether to enable secure WebSockets
 ;wss_port = 8989;			; WebSockets server secure port, if enabled
 ;wss_interface = eth0		; Whether we should bind this server to a specific interface only

@@ -363,12 +363,12 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			char *hostip = NULL;
 			item = janus_config_get_item_drilldown(config, "general", "hostip");
 			if(item && item->value)
-				hostip = (char *)item->value;
+				hostip = g_strdup((char *)item->value);
 			
 			char *path = NULL;
 			item = janus_config_get_item_drilldown(config, "general", "path");
 			if(item && item->value)
-				path = (char *)item->value;
+				path = g_strdup((char *)item->value);
 			
 			/* Prepare context */
 			struct lws_context_creation_info info;
@@ -403,7 +403,7 @@ int janus_websockets_init(janus_transport_callbacks *callback, const char *confi
 			if(wss == NULL) {
 				JANUS_LOG(LOG_FATAL, "Error initializing libwebsockets...\n");
 			} else {
-				JANUS_LOG(LOG_INFO, "WebSockets server started (port %d)...\n", wsport);
+				JANUS_LOG(LOG_INFO, "WebSockets client initialized, Connecting to %s (port %d)...\n",hostip, wsport);
 			}
 		}
 		item = janus_config_get_item_drilldown(config, "general", "wss");

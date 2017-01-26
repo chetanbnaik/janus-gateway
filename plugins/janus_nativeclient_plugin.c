@@ -310,6 +310,7 @@ janus_plugin *create(void) {
 static struct janus_json_parameter event_parameters[] = {
 	{"event", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
+/*
 static struct janus_json_parameter username_parameters[] = {
 	{"username", JSON_STRING, JANUS_JSON_PARAM_REQUIRED}
 };
@@ -319,7 +320,7 @@ static struct janus_json_parameter set_parameters[] = {
 	{"bitrate", JSON_INTEGER, JANUS_JSON_PARAM_POSITIVE},
 	{"record", JANUS_JSON_BOOL, 0},
 	{"filename", JSON_STRING, 0}
-};
+};*/
 
 /* Useful stuff */
 static volatile gint initialized = 0, stopping = 0;
@@ -672,7 +673,7 @@ void janus_nativeclient_destroy_session(janus_plugin_session *handle, int *error
 		if (session->apackets != NULL)
 			g_async_queue_push(session->apackets, &eos_apacket);
 
-		session->destroyed = ps_get_monotonic_time();
+		session->destroyed = janus_get_monotonic_time();
 		g_hash_table_remove(sessions, handle);
 		
 		old_sessions = g_list_append(old_sessions, session);
@@ -864,7 +865,7 @@ void janus_nativeclient_setup_media(janus_plugin_session *handle) {
 			return;
 		}
 		aplayer->abus = gst_pipeline_get_bus (GST_PIPELINE (aplayer->apipeline));
-		aplayer->last_received_audio = ps_get_monotonic_time();
+		aplayer->last_received_audio = janus_get_monotonic_time();
 		session->aplayer = aplayer;
 		session->apackets = g_async_queue_new ();
 		GError * error = NULL;
@@ -906,8 +907,8 @@ static void * janus_nativeclient_relay_thread (void * data) {
 	gpointer aframedata, vframedata;
 	gsize afsize, vfsize;
 	char * atempbuffer, * vtempbuffer;
-	//ps_helpmet_rtp_relay_packet apacket;
-	//ps_helpmet_rtp_relay_packet vpacket;
+	//janus_helpmet_rtp_relay_packet apacket;
+	//janus_helpmet_rtp_relay_packet vpacket;
 	int bytes = 0;
 	
 	while (!g_atomic_int_get (&stopping) && g_atomic_int_get(&initialized) && !g_atomic_int_get(&session->hangingup)) {
@@ -1089,7 +1090,7 @@ void janus_nativeclient_incoming_rtcp(janus_plugin_session *handle, int video, c
 		uint64_t bw = janus_rtcp_get_remb (buf, len);
 		
 		if ((bw > 1024 * 512) && (bw < 1024 * 2048)) {
-			JANUS_LOG (LOG_VERB, "Requested bandwidth is: %d KBps...\n", bw);
+			JANUS_LOG (LOG_VERB, "Requested bandwidth is: %"SCNu64" KBps...\n", bw);
 		}
 	}
 }
@@ -1237,20 +1238,19 @@ static void *janus_nativeclient_handler(void *data) {
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
-		JANUS_VALIDATE_JSON_OBJECT(root, event_parameters,
+		/*JANUS_VALIDATE_JSON_OBJECT(root, event_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_NATIVECLIENT_ERROR_MISSING_ELEMENT, JANUS_NATIVECLIENT_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto error;
+			goto error;*/
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *event = json_object_get(root, "event");
 		const char *event_text = json_string_value(event);
 		
 		json_t *result = NULL;
-		char *sdp_type = NULL, *sdp = NULL;
-		char * result_text = NULL, * janus_text = NULL;
-		int ret = -1;
+		char * sdp_type = NULL, *sdp = NULL;
+		char * janus_text = NULL;
 		
 		if(!strcasecmp(event_text, "incomingcall")) {
 			if (!msg_sdp) {
@@ -1262,17 +1262,17 @@ static void *janus_nativeclient_handler(void *data) {
 			/* We need to prepare an answer */
 			int opus_pt = 111, vp8_pt = 97;
 			
-			char * opus_dir = "sendrecv";
-			//char * vp8_dir = NULL;
+			char * opus_dir = NULL;
+			char * vp8_dir = NULL;
 			
-			/*if(strstr(msg->sdp, "m=audio")) {
-				PS_LOG (LOG_VERB, "Audio requested\n");
-				opus_dir = ps_get_opus_dir (msg->sdp);
+			if(strstr(msg_sdp, "m=audio")) {
+				opus_dir = janus_get_opus_dir (msg_sdp);
+				JANUS_LOG (LOG_VERB, "Audio requested: direction is %s \n", opus_dir);
 			}
-			if(strstr(msg->sdp, "m=video")) {
-				PS_LOG (LOG_VERB, "Video requested\n");
-				vp8_dir = ps_get_vp8_dir (msg->sdp);
-			}*/
+			if(strstr(msg_sdp, "m=video")) {
+				vp8_dir = janus_get_vp8_dir (msg_sdp);
+				JANUS_LOG (LOG_VERB, "Video requested: direction is %s \n", vp8_dir);
+			}
 			sdp_type = "answer";
 			char sdptemp[1024], audio_mline[256], video_mline[512], data_lines[256];
 			if (opus_pt > 0 && opus_dir != NULL) {
@@ -1349,15 +1349,15 @@ static void *janus_nativeclient_handler(void *data) {
 				"a=sctpmap:5000 webrtc-datachannel 16\r\n");
 			
 			g_snprintf(sdptemp, 1024, sdp_template,
-				ps_get_real_time(),			/* We need current time here */
-				ps_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
+				janus_get_real_time(),			/* We need current time here */
 				"PacketServo",		/* Playout session */
 				audio_mline,					/* Audio m-line, if any */
 				video_mline,					/* Video m-line, if any */
 				data_lines);
 			
 			sdp = g_strdup(sdptemp);
-			PS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
+			JANUS_LOG(LOG_VERB, "Going to answer this SDP:\n%s\n", sdp);
 			
 			result = json_object();
 			json_object_set_new(result, "request", json_string("accept"));
@@ -1371,16 +1371,19 @@ static void *janus_nativeclient_handler(void *data) {
 			JANUS_LOG (LOG_VERB, "Received a hangup request..\n");
 			gateway->close_pc(session->handle);
 			janus_text="hangup";
+		} else if(!strcasecmp(event_text, "registered")) {
+			JANUS_LOG (LOG_VERB, "Registration successful..\n");
+			goto done;
 		} else {
-			JANUS_LOG(LOG_ERR, "Unknown request (%s)\n", event_text);
+			JANUS_LOG(LOG_ERR, "Unknown event (%s)\n", event_text);
 			error_code = JANUS_NATIVECLIENT_ERROR_INVALID_REQUEST;
-			g_snprintf(error_cause, 512, "Unknown request (%s)", request_text);
+			g_snprintf(error_cause, 512, "Unknown event (%s)", event_text);
 			goto error;
 		}
 
 		/* Prepare JSON event */
 		json_t *jsep = sdp ? json_pack("{ssss}", "type", sdp_type, "sdp", sdp) : NULL;
-		ret = gateway->send_request(msg->handle, &janus_nativeclient_plugin, msg->transaction, result, jsep, janus_text);
+		int ret = gateway->send_request(msg->handle, &janus_nativeclient_plugin, msg->transaction, result, jsep, janus_text);
 		JANUS_LOG(LOG_VERB, "  >> Sending request: %d (%s)\n", ret, janus_get_api_error(ret));
 		g_free(sdp);
 		if(jsep)
@@ -1391,7 +1394,13 @@ static void *janus_nativeclient_handler(void *data) {
 error:
 		{
 			if (sdp) g_free(sdp);
-			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", ret, janus_get_api_error(ret));
+			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", -1, janus_get_api_error(-1));
+			janus_nativeclient_message_free(msg);
+			continue;
+		}
+
+done:
+		{
 			janus_nativeclient_message_free(msg);
 		}
 	}

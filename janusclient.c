@@ -729,7 +729,7 @@ int janus_process_incoming_response (janus_request *request) {
 				janus_random_string(12, (char *)&tr);
 				json_object_set_new(local_message, "transaction", json_string(tr));
 				json_object_set_new(local_message, "local_request", json_true());
-				json_object_set_new(local_message, "plugin", json_string("janus.plugin.psclient"));
+				json_object_set_new(local_message, "plugin", json_string("janus.plugin.nativeclient"));
 				json_object_set_new(local_message, "request_handle_id", json_integer(handle_id));
 				
 				request->local_message = local_message;
