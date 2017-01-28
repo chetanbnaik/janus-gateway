@@ -676,7 +676,7 @@ int janus_process_incoming_response (janus_request *request) {
 			if (plugindata && json_is_object(plugindata)) {
 				json_t * eventdata = json_object_get (plugindata, "data");
 				if (eventdata && json_is_object(eventdata)) {
-					result = json_object_get (eventdata, "result");
+					result = json_deep_copy(json_object_get (eventdata, "result"));
 					if (result) {
 						json_object_set_new (local_message, "janus", json_string("message"));
 						json_object_set_new (local_message, "session_id", json_integer(session_id));
