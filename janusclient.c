@@ -764,6 +764,7 @@ int janus_process_incoming_response (janus_request *request) {
 					json_t * reply = json_object();
 					json_object_set_new (reply, "request", json_string("register"));
 					json_object_set_new (reply, "username", json_string("democap"));
+					json_object_set_new (reply, "type", json_string("merchant-iot"));
 					json_object_set_new (payload, "body", reply);
 					ret = request->transport->send_message(request->instance, NULL, FALSE, payload);
 				}
