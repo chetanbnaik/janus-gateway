@@ -378,6 +378,7 @@ static GMainContext *sessions_watchdog_context = NULL;
 
 #define SESSION_TIMEOUT		60		/* FIXME Should this be higher, e.g., 120 seconds? */
 #define SESSION_KEEPALIVE 	45
+static size_t json_format = JSON_INDENT(3) | JSON_PRESERVE_ORDER;
 
 static gboolean janus_cleanup_session(gpointer user_data) {
 	janus_session *session = (janus_session *) user_data;
@@ -515,18 +516,20 @@ janus_session *janus_session_find_destroyed(guint64 session_id) {
 }
 
 void janus_session_notify_event(guint64 session_id, json_t *event) {
-	janus_mutex_lock(&sessions_mutex);
+	char *event_text = json_dumps(event, json_format);
+	JANUS_LOG (LOG_INFO, "Event received from %"SCNu64": %s\n", session_id, event_text);
+	json_decref (event);
+	return;
+	/*janus_mutex_lock(&sessions_mutex);
 	janus_session *session = sessions ? g_hash_table_lookup(sessions, &session_id) : NULL;
 	if(session != NULL && !session->destroy && session->source != NULL && session->source->transport != NULL) {
 		janus_mutex_unlock(&sessions_mutex);
-		/* Send this to the transport client */
 		JANUS_LOG(LOG_HUGE, "Sending event to %s (%p)\n", session->source->transport->get_package(), session->source->instance);
 		session->source->transport->send_message(session->source->instance, NULL, FALSE, event);
 	} else {
 		janus_mutex_unlock(&sessions_mutex);
-		/* No transport, free the event */
 		json_decref(event);
-	}
+	}*/
 }
 
 void janus_session_send_request(guint64 session_id, json_t *request) {
@@ -656,6 +659,17 @@ int janus_process_incoming_response (janus_request *request) {
 	
 	jsep = json_object_get(root, "jsep");
 	
+	if (!strcasecmp(message_text,"webrtcup")) {
+		JANUS_LOG(LOG_VERB,"Webrtc connection up for %"SCNu64" in session %"SCNu64"...\n", handle_id, session_id);
+		goto jsondone;
+	}
+	
+	if (!strcasecmp(message_text,"media")) {
+		json_t * media_type = json_object_get(root,"type");
+		JANUS_LOG(LOG_VERB,"Media status: %"SCNu64" in session %"SCNu64", %s...\n", handle_id, session_id, media_type ? json_string_value(media_type) : "none");
+		goto jsondone;
+	}
+	
 	if (!strcasecmp(message_text,"event") && session_id > 0) {
 		janus_session * session = janus_session_find (session_id);
 		if (!session) {
@@ -677,19 +691,22 @@ int janus_process_incoming_response (janus_request *request) {
 				json_t * eventdata = json_object_get (plugindata, "data");
 				if (eventdata && json_is_object(eventdata)) {
 					result = json_deep_copy(json_object_get (eventdata, "result"));
+					
 					if (result) {
+						//json_incref (result);
 						json_object_set_new (local_message, "janus", json_string("message"));
 						json_object_set_new (local_message, "session_id", json_integer(session_id));
 						json_object_set_new (local_message, "handle_id", json_integer(handle_id));
 						json_object_set_new (local_message, "body", result);
 						if (jsep && json_is_object(jsep)) {
+							//json_incref (jsep);
 							json_object_set_new (jsep,"trickle",json_false());
 							json_object_set_new (local_message, "jsep", jsep);
 						}
 						
 						janus_random_string(12, (char *)&tr);
 						json_object_set_new (local_message, "transaction", json_string(tr));
-					
+						//json_incref (local_message);
 						request->local_message = local_message;
 						ret = janus_process_incoming_request (request);
 						goto jsondone;
@@ -2461,6 +2478,7 @@ int janus_process_success(janus_request *request, json_t *payload)
 		JANUS_LOG(LOG_HUGE, "Sending %s API response to %s (%p)\n", request->admin ? "admin" : "Janus", request->transport->get_package(), request->instance);
 		return request->transport->send_message(request->instance, request->request_id, request->admin, payload);
 	} else {
+		json_decref (payload);
 		return 0;
 	}
 }

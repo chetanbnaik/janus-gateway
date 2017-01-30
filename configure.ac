@@ -478,6 +478,13 @@ PKG_CHECK_MODULES([GST],
 				  gstreamer-1.0 >= $GST_REQUIRED
 				  gstreamer-base-1.0 >= $GST_REQUIRED
 				  gstreamer-controller-1.0 >= $GST_REQUIRED
+				  gstreamer-app-1.0 >= $GST_REQUIRED
+				  gstreamer-audio-1.0 >= $GST_REQUIRED
+				  gstreamer-mpegts-1.0 >= $GST_REQUIRED
+				  gstreamer-video-1.0 >= $GST_REQUIRED
+				  gstreamer-fft-1.0 >= $GST_REQUIRED
+				  gstreamer-pbutils-1.0 >= $GST_REQUIRED
+				  gstreamer-tag-1.0 >= $GST_REQUIRED
 				  ],
                   [
                     AS_IF([test "x$enable_plugin_nativeclient" = "xmaybe"],

@@ -765,6 +765,7 @@ int janus_websockets_send_message(void *transport, void *request_id, gboolean ad
 	/* Convert to string and enqueue */
 	char *payload = json_dumps(message, json_format);
 	g_async_queue_push(client->messages, payload);
+	JANUS_LOG(LOG_INFO, "Sending message: --> %s \n", payload);
 #ifdef HAVE_LIBWEBSOCKETS_NEWAPI
 	lws_callback_on_writable(client->wsi);
 #else
