@@ -799,7 +799,7 @@ int janus_process_incoming_response (janus_request *request) {
 					json_object_set_new (payload, "session_id", json_integer(session_id));
 					janus_random_string(12, (char *)&tr);
 					json_object_set_new(payload, "transaction", json_string(tr));
-					json_object_set_new(payload, "plugin", json_string("janus.plugin.videocall"));
+					json_object_set_new(payload, "plugin", json_string("janus.plugin.transcode"));
 					ret = request->transport->send_message(request->instance, NULL, FALSE, payload);
 				}
 				goto jsondone;
