@@ -507,7 +507,7 @@ static janus_mutex sessions_mutex;
 /* VideoCall watchdog/garbage collector (sort of) */
 void *janus_transcode_watchdog(void *data);
 void *janus_transcode_watchdog(void *data) {
-	JANUS_LOG(LOG_INFO, "VideoCall watchdog started\n");
+	JANUS_LOG(LOG_INFO, "Transcoder watchdog started\n");
 	gint64 now = 0;
 	while(g_atomic_int_get(&initialized) && !g_atomic_int_get(&stopping)) {
 		janus_mutex_lock(&sessions_mutex);
@@ -515,7 +515,7 @@ void *janus_transcode_watchdog(void *data) {
 		now = janus_get_monotonic_time();
 		if(old_sessions != NULL) {
 			GList *sl = old_sessions;
-			JANUS_LOG(LOG_HUGE, "Checking %d old VideoCall sessions...\n", g_list_length(old_sessions));
+			JANUS_LOG(LOG_HUGE, "Checking %d old Transcoder sessions...\n", g_list_length(old_sessions));
 			while(sl) {
 				janus_transcode_session *session = (janus_transcode_session *)sl->data;
 				if(!session) {
@@ -524,7 +524,7 @@ void *janus_transcode_watchdog(void *data) {
 				}
 				if(now-session->destroyed >= 5*G_USEC_PER_SEC) {
 					/* We're lazy and actually get rid of the stuff only after a few seconds */
-					JANUS_LOG(LOG_VERB, "Freeing old VideoCall session\n");
+					JANUS_LOG(LOG_VERB, "Freeing old Trascoder session\n");
 					GList *rm = sl->next;
 					old_sessions = g_list_delete_link(old_sessions, sl);
 					sl = rm;
@@ -539,7 +539,7 @@ void *janus_transcode_watchdog(void *data) {
 		janus_mutex_unlock(&sessions_mutex);
 		g_usleep(500000);
 	}
-	JANUS_LOG(LOG_INFO, "VideoCall watchdog stopped\n");
+	JANUS_LOG(LOG_INFO, "Transcoder watchdog stopped\n");
 	return NULL;
 }
 
@@ -588,14 +588,14 @@ int janus_transcode_init(janus_callbacks *callback, const char *config_path) {
 	watchdog = g_thread_try_new("transcode watchdog", &janus_transcode_watchdog, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoCall watchdog thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Transcoder watchdog thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	/* Launch the thread that will handle incoming messages */
 	handler_thread = g_thread_try_new("transcode handler", janus_transcode_handler, NULL, &error);
 	if(error != NULL) {
 		g_atomic_int_set(&initialized, 0);
-		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the VideoCall handler thread...\n", error->code, error->message ? error->message : "??");
+		JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the Transcoder handler thread...\n", error->code, error->message ? error->message : "??");
 		return -1;
 	}
 	JANUS_LOG(LOG_INFO, "%s initialized!\n", JANUS_TRANSCODE_NAME);
@@ -708,13 +708,13 @@ void janus_transcode_destroy_session(janus_plugin_session *handle, int *error) {
 	}
 	janus_transcode_session *session = (janus_transcode_session *)handle->plugin_handle; 
 	if(!session) {
-		JANUS_LOG(LOG_ERR, "No VideoCall session associated with this handle...\n");
+		JANUS_LOG(LOG_ERR, "No Transcoder session associated with this handle...\n");
 		*error = -2;
 		return;
 	}
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
-		JANUS_LOG(LOG_VERB, "Removing VideoCall user %s session...\n", session->username ? session->username : "'unknown'");
+		JANUS_LOG(LOG_VERB, "Removing Transcoder user %s session...\n", session->username ? session->username : "'unknown'");
 		if (session->transcode && session->vpackets != NULL) {
 			g_async_queue_push(session->vpackets, &eos_vpacket);
 		}
@@ -1185,7 +1185,7 @@ void janus_transcode_hangup_media(janus_plugin_session *handle) {
 
 /* Thread to handle incoming messages */
 static void *janus_transcode_handler(void *data) {
-	JANUS_LOG(LOG_VERB, "Joining VideoCall handler thread\n");
+	JANUS_LOG(LOG_VERB, "Joining Transcoder handler thread\n");
 	janus_transcode_message *msg = NULL;
 	int error_code = 0;
 	char error_cause[512];
@@ -1635,7 +1635,7 @@ static void *janus_transcode_handler(void *data) {
 							session->arc = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this Transcoder user!\n");
 							}
 						} else {
 							/* Build a filename */
@@ -1646,7 +1646,7 @@ static void *janus_transcode_handler(void *data) {
 							session->arc = janus_recorder_create(NULL, "opus", filename);
 							if(session->arc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this VideoCall user!\n");
+								JANUS_LOG(LOG_ERR, "Couldn't open an audio recording file for this Transcoder user!\n");
 							}
 						}
 					}
@@ -1659,7 +1659,7 @@ static void *janus_transcode_handler(void *data) {
 							session->vrc = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this Transcoder user!\n");
 							}
 						} else {
 							/* Build a filename */
@@ -1670,7 +1670,7 @@ static void *janus_transcode_handler(void *data) {
 							session->vrc = janus_recorder_create(NULL, "vp8", filename);
 							if(session->vrc == NULL) {
 								/* FIXME We should notify the fact the recorder could not be created */
-								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this VideoCall user!\n");
+								JANUS_LOG(LOG_ERR, "Couldn't open an video recording file for this Transcoder user!\n");
 							}
 						}
 						/* Send a PLI */
@@ -1784,6 +1784,6 @@ error:
 			janus_transcode_message_free(msg);
 		}
 	}
-	JANUS_LOG(LOG_VERB, "Leaving VideoCall handler thread\n");
+	JANUS_LOG(LOG_VERB, "Leaving Transcoder handler thread\n");
 	return NULL;
 }
