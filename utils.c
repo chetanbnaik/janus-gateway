@@ -287,6 +287,29 @@ char * janus_get_vp8_dir (const char * sdp) {
 	return NULL;
 }
 
+char * janus_get_h264_dir (const char * sdp) {
+	if (sdp == NULL) return NULL;
+	if (!strstr(sdp, "m=video") || (!strstr(sdp, "h264/90000") && !strstr(sdp, "H264/90000")))
+		return NULL;
+	const char * line = strstr(sdp, "m=video");
+	while(line) {
+		char * next = strchr(line, '\n');
+		if (next) {
+			* next = '\0';
+			if (strstr(line, "a=sendrecv") || strstr(line,"a=sendonly") || strstr(line,"a=recvonly") || strstr(line,"a=inactive")) {
+				char direction[8];
+				if(sscanf(line, "a=%s", direction) == 1) {
+					*next = '\n';
+					return g_strdup(direction);
+				}
+			}
+			* next = '\n';
+		}
+		line = next ? (next + 1) : NULL;
+	}
+	return NULL;
+}
+
 int janus_get_codec_pt(const char *sdp, const char *codec) {
 	if(!sdp || !codec)
 		return -1;
