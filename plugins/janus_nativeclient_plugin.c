@@ -748,7 +748,7 @@ void janus_nativeclient_setup_media(janus_plugin_session *handle) {
 		g_object_set (rtp_source->vfilter, "caps", rtp_source->vfiltercaps, NULL);
 		g_object_set (rtp_source->parserfilter, "caps", rtp_source->parsercaps, NULL);
 		g_object_set (rtp_source->vsource, "bitrate", 1024 * 2048 * 8, NULL);
-		g_object_set (rtp_source->vsource, "exposure-mode", 10, NULL);
+		//g_object_set (rtp_source->vsource, "exposure-mode", 10, NULL);
 		g_object_set (rtp_source->vsource, "preview", FALSE, NULL);
 		g_object_set (rtp_source->vsource, "rotation", 180, NULL);
 		//g_object_set (rtp_source->vsource, "inline-headers", TRUE, NULL);
@@ -895,7 +895,7 @@ static void * janus_nativeclient_relay_thread (void * data) {
 	}
 	janus_nativeclient_rtp_source * source = session->rtp_source;
 	gst_element_set_state (source->pipeline, GST_STATE_PLAYING);
-	if (gst_element_get_state (source->pipeline, NULL, NULL, 500000000) == GST_STATE_CHANGE_FAILURE) {
+	if (gst_element_get_state (source->pipeline, NULL, NULL, GST_CLOCK_TIME_NONE) == GST_STATE_CHANGE_FAILURE) {
 		JANUS_LOG (LOG_ERR, "Unable to play rtp_source pipeline..!\n");
 		session->started = FALSE;
 		g_thread_unref (g_thread_self());
@@ -946,11 +946,11 @@ static void * janus_nativeclient_relay_thread (void * data) {
 			g_free (vframedata);
 			
 			bytes = vfsize; //gst_buffer_get_size (abuffer);
-			gst_sample_unref (asample);
+			gst_sample_unref (vsample);
 			if (!session->started) continue;
 			
 			if (gateway != NULL)
-				gateway->relay_rtp(session->handle, 0, vtempbuffer, bytes);
+				gateway->relay_rtp(session->handle, 1, vtempbuffer, bytes);
 			
 			g_free (vtempbuffer);
 		}
@@ -963,6 +963,7 @@ static void * janus_nativeclient_relay_thread (void * data) {
 		JANUS_LOG (LOG_ERR, "Unable to stop GSTREAMER rtp source pipeline..!!\n");
 	}
 	gst_object_unref (GST_OBJECT(source->pipeline));
+	session->rtp_source = NULL;
 	session->send_video = FALSE;
 	session->send_audio = FALSE;
 	
@@ -1065,6 +1066,7 @@ static void * janus_nativeclient_aplayer_thread (void * data) {
 		JANUS_LOG (LOG_ERR, "Unable to stop GSTREAMER audio player..!!\n");
 	}
 	gst_object_unref (GST_OBJECT(player->apipeline));
+	session->aplayer = NULL;
 	session->play_audio = FALSE;
 
 	if (session->apackets != NULL)
@@ -1090,7 +1092,25 @@ void janus_nativeclient_incoming_rtcp(janus_plugin_session *handle, int video, c
 		uint64_t bw = janus_rtcp_get_remb (buf, len);
 		
 		if ((bw > 1024 * 512) && (bw < 1024 * 2048)) {
-			JANUS_LOG (LOG_VERB, "Requested bandwidth is: %"SCNu64" KBps...\n", bw);
+			JANUS_LOG (LOG_INFO, "Requested bandwidth is: %"SCNu64" KBps...\n", bw);
+			janus_nativeclient_session * session = (janus_nativeclient_session *)handle->plugin_handle;
+			if (!session) {
+				JANUS_LOG (LOG_ERR, "No session associated with this handle\n");
+				return;
+			}
+			if (session->destroyed) return;
+			if (session->started && video && session->send_video) {
+				janus_nativeclient_rtp_source * source = session->rtp_source;
+				GstElement * vsource = NULL;
+				vsource = gst_bin_get_by_name(GST_BIN(source->pipeline), "vsource");
+				if (!vsource) {
+					JANUS_LOG (LOG_ERR, "Unable to retrieve video encoder\n");
+					return;
+				}
+				g_object_set(vsource, "bitrate", bw * 8, NULL);
+				JANUS_LOG (LOG_INFO, "Target bitrate of video encoder set to %"SCNu64"\n", bw);
+				gst_object_unref (vsource);
+			}
 		}
 	}
 }
@@ -1238,11 +1258,11 @@ static void *janus_nativeclient_handler(void *data) {
 			g_snprintf(error_cause, 512, "JSON error: not an object");
 			goto error;
 		}
-		/*JANUS_VALIDATE_JSON_OBJECT(root, event_parameters,
+		JANUS_VALIDATE_JSON_OBJECT(root, event_parameters,
 			error_code, error_cause, TRUE,
 			JANUS_NATIVECLIENT_ERROR_MISSING_ELEMENT, JANUS_NATIVECLIENT_ERROR_INVALID_ELEMENT);
 		if(error_code != 0)
-			goto error;*/
+			goto error;
 		const char *msg_sdp_type = json_string_value(json_object_get(msg->jsep, "type"));
 		const char *msg_sdp = json_string_value(json_object_get(msg->jsep, "sdp"));
 		json_t *event = json_object_get(root, "event");
@@ -1311,8 +1331,8 @@ static void *janus_nativeclient_handler(void *data) {
 				session->send_audio = FALSE;
 			}
 			
-			//if (vp8_pt > 0 && vp8_dir != NULL) {
-				//if (!strcasecmp(vp8_dir, "sendrecv") || !strcasecmp(vp8_dir, "recvonly")) {
+			if (vp8_pt > 0 && vp8_dir != NULL) {
+				if (!strcasecmp(vp8_dir, "sendrecv") || !strcasecmp(vp8_dir, "recvonly")) {
 					g_snprintf(video_mline, 512, sdp_v_template,
 						vp8_pt,							/* VP8 payload type */
 						"sendonly",						/* FIXME to check a= line */
@@ -1324,7 +1344,7 @@ static void *janus_nativeclient_handler(void *data) {
 						vp8_pt, 						/* VP8 payload type */
 						vp8_pt); 						/* VP8 payload type */
 					session->send_video = TRUE;
-				/*} else {
+				} else {
 					g_snprintf(video_mline, 512, sdp_v_template,
 						vp8_pt,							
 						"inactive",						
@@ -1336,11 +1356,11 @@ static void *janus_nativeclient_handler(void *data) {
 						vp8_pt, 						
 						vp8_pt); 						
 					session->send_video = FALSE;
-				}*/
-			/*} else {
+				}
+			} else {
 				video_mline[0] = '\0';
 				session->send_video = FALSE;
-			}*/
+			}
 			
 			/* Always offer to receive data */
 			g_snprintf(data_lines, 512, 
@@ -1364,9 +1384,10 @@ static void *janus_nativeclient_handler(void *data) {
 			janus_text = "message";
 		} else if(!strcasecmp(event_text, "accepted")) {
 			JANUS_LOG (LOG_VERB, "Remote client accepted the call..\n");
-			result = json_object();
+			goto done;
+			/*result = json_object();
 			json_object_set_new (result, "completed", json_true());
-			janus_text = "trickle";
+			janus_text = "trickle";*/
 		} else if(!strcasecmp(event_text, "hangup")) {
 			JANUS_LOG (LOG_VERB, "Received a hangup request..\n");
 			gateway->close_pc(session->handle);
@@ -1386,6 +1407,7 @@ static void *janus_nativeclient_handler(void *data) {
 		int ret = gateway->send_request(msg->handle, &janus_nativeclient_plugin, msg->transaction, result, jsep, janus_text);
 		JANUS_LOG(LOG_VERB, "  >> Sending request: %d (%s)\n", ret, janus_get_api_error(ret));
 		g_free(sdp);
+		if (result) json_decref(result);
 		if(jsep)
 			json_decref(jsep);
 		janus_nativeclient_message_free(msg);
@@ -1394,6 +1416,7 @@ static void *janus_nativeclient_handler(void *data) {
 error:
 		{
 			if (sdp) g_free(sdp);
+			if (result) json_decref(result);
 			JANUS_LOG(LOG_VERB, "  >> Pushing event: %d (%s)\n", -1, janus_get_api_error(-1));
 			janus_nativeclient_message_free(msg);
 			continue;

@@ -29,7 +29,7 @@ esac
 
 glib_version=2.32
 ssl_version=1.0.1
-GST_REQUIRED=1.4.0
+GST_REQUIRED=1.8.0
 
 ##
 # Janus
@@ -114,6 +114,7 @@ PKG_CHECK_MODULES([JANUS],
                     jansson
                     libssl >= $ssl_version
                     libcrypto
+                    gstreamer-1.0 >= $GST_REQUIRED
                   ])
 JANUS_MANUAL_LIBS+=" -lm"
 AC_SUBST(JANUS_MANUAL_LIBS)
@@ -477,6 +478,13 @@ PKG_CHECK_MODULES([GST],
 				  gstreamer-1.0 >= $GST_REQUIRED
 				  gstreamer-base-1.0 >= $GST_REQUIRED
 				  gstreamer-controller-1.0 >= $GST_REQUIRED
+				  gstreamer-app-1.0 >= $GST_REQUIRED
+				  gstreamer-audio-1.0 >= $GST_REQUIRED
+				  gstreamer-mpegts-1.0 >= $GST_REQUIRED
+				  gstreamer-video-1.0 >= $GST_REQUIRED
+				  gstreamer-fft-1.0 >= $GST_REQUIRED
+				  gstreamer-pbutils-1.0 >= $GST_REQUIRED
+				  gstreamer-tag-1.0 >= $GST_REQUIRED
 				  ],
                   [
                     AS_IF([test "x$enable_plugin_nativeclient" = "xmaybe"],
