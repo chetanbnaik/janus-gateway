@@ -863,8 +863,8 @@ static void * janus_transcode_transcode_thread (void * data) {
 	g_thread_try_new ("playout", &janus_transcode_relay_thread, session, &error);
 	if (error != NULL) {
 		JANUS_LOG (LOG_ERR, "Got error %d (%s) trying to launch the gstreamer relay thread...\n", error->code, error->message ? error->message : "??");
-		gst_object_unref (GST_OBJECT(transcoder->pipeline));
-		g_free (transcoder);
+		gst_object_unref (GST_OBJECT(player->pipeline));
+		g_free (player);
 		g_thread_unref (g_thread_self());
 		return NULL;
 	}
@@ -956,8 +956,7 @@ static void * janus_transcode_relay_thread (void * data) {
 				g_free (vframedata);
 				
 				bytes = vfsize; //gst_buffer_get_size (abuffer);
-				gst_sample_unref (asample);
-				if (!session->started) continue;
+				gst_sample_unref (vsample);
 				
 				if (gateway != NULL)
 					gateway->relay_rtp(session->peer->handle, 0, vtempbuffer, bytes);
@@ -1179,7 +1178,7 @@ void janus_transcode_hangup_media(janus_plugin_session *handle) {
 	session->video_pt = 0;
 	session->transcode = FALSE;
 	if (session->answer_sdp != NULL) {
-		g_free(session->answer_sdp)
+		g_free(session->answer_sdp);
 		session->answer_sdp = NULL;
 	}
 }
@@ -1521,7 +1520,7 @@ static void *janus_transcode_handler(void *data) {
 			if (!strcasecmp(session->type,"merchant-iot")) {
 				audio_pt = janus_get_codec_pt(msg_sdp,"opus");
 				video_pt = janus_get_codec_pt(msg_sdp,"h264");
-			} else if (!strcasecmp(session->type,"consumer") {
+			} else if (!strcasecmp(session->type,"consumer")) {
 				audio_pt = janus_get_codec_pt(msg_sdp,"opus");
 				video_pt = janus_get_codec_pt(msg_sdp,"vp8");
 			}
@@ -1529,12 +1528,13 @@ static void *janus_transcode_handler(void *data) {
 			session->video_pt = video_pt;
 
 			/* Send SDP to our peer */
+			json_t * jsep = NULL;
 			if (!strcasecmp(session->type,"merchant-iot") && !strcasecmp(session->peer->type,"consumer")) {
 				session->transcode = TRUE;
 				peer_sdp = g_strdup(session->peer->answer_sdp);
-				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", peer_sdp);
+				jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", peer_sdp);
 			} else {
-				json_t *jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
+				jsep = json_pack("{ssss}", "type", msg_sdp_type, "sdp", msg_sdp);
 			}
 			
 			json_t *call = json_object();

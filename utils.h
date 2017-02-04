@@ -126,6 +126,7 @@ const char *janus_get_codec_from_pt(const char *sdp, int pt);
 
 char * janus_get_opus_dir (const char * sdp);
 char * janus_get_vp8_dir (const char * sdp);
+char * janus_get_h264_dir (const char * sdp);
 /*! \brief Check if the given IP address is valid: family is set to the address family if the IP is valid
  * @param ip The IP address to check
  * @param[in,out] family The address family of the address, set by the method if valid
