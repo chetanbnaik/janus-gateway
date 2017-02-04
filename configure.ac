@@ -415,7 +415,13 @@ AC_ARG_ENABLE([plugin-nativeclient],
                               [Disable nativeclient plugin])],
               [],
               [enable_plugin_nativeclient=yes])
-              
+
+AC_ARG_ENABLE([plugin-videocalltranscode],
+              [AS_HELP_STRING([--disable-plugin-videocalltranscode],
+                              [Disable videocalltranscode plugin])],
+              [],
+              [enable_plugin_videocalltranscode=yes])
+                            
 AC_ARG_ENABLE([plugin-videoroom],
               [AS_HELP_STRING([--disable-plugin-videoroom],
                               [Disable videoroom plugin])],
@@ -497,6 +503,30 @@ PKG_CHECK_MODULES([GST],
 AC_SUBST([GST_CFLAGS])
 AC_SUBST([GST_LIBS])
 
+PKG_CHECK_MODULES([GST],
+                  [
+				  gstreamer-1.0 >= $GST_REQUIRED
+				  gstreamer-base-1.0 >= $GST_REQUIRED
+				  gstreamer-controller-1.0 >= $GST_REQUIRED
+				  gstreamer-app-1.0 >= $GST_REQUIRED
+				  gstreamer-audio-1.0 >= $GST_REQUIRED
+				  gstreamer-mpegts-1.0 >= $GST_REQUIRED
+				  gstreamer-video-1.0 >= $GST_REQUIRED
+				  gstreamer-fft-1.0 >= $GST_REQUIRED
+				  gstreamer-pbutils-1.0 >= $GST_REQUIRED
+				  gstreamer-tag-1.0 >= $GST_REQUIRED
+				  ],
+                  [
+                    AS_IF([test "x$enable_plugin_videocalltranscode" = "xmaybe"],
+                          [enable_plugin_nativeclient=yes])
+                  ],
+                  [
+                    AS_IF([test "x$enable_plugin_videocalltranscode" = "xyes"],
+                          [AC_MSG_ERROR([GST not found. See README.md for installation instructions or use --disable-plugin-videocalltranscode])])
+                  ])
+AC_SUBST([GST_CFLAGS])
+AC_SUBST([GST_LIBS])
+
 AM_CONDITIONAL([ENABLE_PLUGIN_AUDIOBRIDGE], [test "x$enable_plugin_audiobridge" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_ECHOTEST], [test "x$enable_plugin_echotest" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_RECORDPLAY], [test "x$enable_plugin_recordplay" = "xyes"])
@@ -504,6 +534,7 @@ AM_CONDITIONAL([ENABLE_PLUGIN_SIP], [test "x$enable_plugin_sip" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_STREAMING], [test "x$enable_plugin_streaming" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALL], [test "x$enable_plugin_videocall" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_NATIVECLIENT], [test "x$enable_plugin_nativeclient" = "xyes"])
+AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOCALLTRANSCODE], [test "x$enable_plugin_videocalltranscode" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VIDEOROOM], [test "x$enable_plugin_videoroom" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_VOICEMAIL], [test "x$enable_plugin_voicemail" = "xyes"])
 AM_CONDITIONAL([ENABLE_PLUGIN_TEXTROOM], [test "x$enable_plugin_textroom" = "xyes"])
@@ -610,6 +641,9 @@ AM_COND_IF([ENABLE_PLUGIN_VIDEOCALL],
 AM_COND_IF([ENABLE_PLUGIN_NATIVECLIENT],
 	[echo "    NativeClient RPi3:     yes"],
 	[echo "    NativeClient RPi3:     no"])
+AM_COND_IF([ENABLE_PLUGIN_VIDEOCALLTRANSCODE],
+	[echo "    Videocall Transcoding: yes"],
+	[echo "    Videocall Transcoding: no"])
 AM_COND_IF([ENABLE_PLUGIN_SIP],
 	[echo "    SIP Gateway:           yes"],
 	[echo "    SIP Gateway:           no"])

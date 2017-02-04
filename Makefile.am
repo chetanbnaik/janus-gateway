@@ -333,6 +333,16 @@ conf_DATA += conf/janus.plugin.nativeclient.cfg.sample
 EXTRA_DIST += conf/janus.plugin.nativeclient.cfg.sample
 endif
 
+if ENABLE_PLUGIN_VIDEOCALLTRANSCODE
+plugin_LTLIBRARIES += plugins/libjanus_transcode.la
+plugins_libjanus_transcode_la_SOURCES = plugins/janus_transcode_videocall.c
+plugins_libjanus_transcode_la_CFLAGS = $(plugins_cflags) $(GST_CFLAGS)
+plugins_libjanus_transcode_la_LDFLAGS = $(plugins_ldflags) $(GST_LDFLAGS) $(GST_LIBS)
+plugins_libjanus_transcode_la_LIBADD = $(plugins_libadd) $(GST_LIBADD)
+conf_DATA += conf/janus.plugin.transcode.cfg.sample
+EXTRA_DIST += conf/janus.plugin.transcode.cfg.sample
+endif
+
 if ENABLE_PLUGIN_VIDEOROOM
 plugin_LTLIBRARIES += plugins/libjanus_videoroom.la
 plugins_libjanus_videoroom_la_SOURCES = plugins/janus_videoroom.c
